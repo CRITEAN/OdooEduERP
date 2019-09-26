@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
-from odoo import models, fields, api
-from odoo.tools.translate import _
+from odoo import models, fields, api, _
 from odoo.exceptions import except_orm
 
 
@@ -30,7 +28,6 @@ class TransferVehicle(models.TransientModel):
                 result.update({'name': student.id})
         return result
 
-    @api.multi
     @api.onchange('participation_id')
     def onchange_participation_id(self):
         '''Method to get transport id and vehicle of participant'''
@@ -69,4 +66,3 @@ class TransferVehicle(models.TransientModel):
             vehi_new_data.write({'vehi_participants_ids': [(6, 0, participants)
                                                            ]})
             rec.participation_id.write({'vehicle_id': rec.new_vehicle_id.id})
-        return True

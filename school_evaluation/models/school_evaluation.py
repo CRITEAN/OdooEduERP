@@ -16,7 +16,6 @@ class SchoolEvaluation(models.Model):
     def get_record(self):
         '''Method to get the evaluation questions'''
         eval_temp_obj = self.env['school.evaluation.template']
-        eval_list = []
         for rec in self:
             eval_list = []
             eval_temps = eval_temp_obj.search([('type', '=', rec.type)])
@@ -27,7 +26,6 @@ class SchoolEvaluation(models.Model):
             rec.write({'eval_line': eval_list})
         return True
 
-    @api.multi
     @api.depends('eval_line')
     def _compute_total_points(self):
         '''Method to compute evaluation points'''
@@ -71,7 +69,6 @@ class SchoolEvaluation(models.Model):
     date = fields.Date('Evaluation Date', required=True,
                        help="Evaluation Date",
                        default=lambda * a: time.strftime('%Y-%m-%d'))
-#    evaluator_id = fields.Many2one('hr.employee', 'Faculty Name')
     eval_line = fields.One2many('school.evaluation.line', 'eval_id',
                                 'Questionnaire')
     total = fields.Float('Total Points', compute='_compute_total_points',
@@ -82,11 +79,12 @@ class SchoolEvaluation(models.Model):
                              'State', readonly=True, default='draft')
     username = fields.Many2one('res.users', 'User', readonly=True,
                                default=lambda self: self.env.user)
+    active = fields.Boolean('Active', default=True)
 
     @api.multi
     def set_start(self):
         '''change state to start'''
-        self.write({'state': 'start'})
+        self.state = 'start'
 
     @api.model
     def default_get(self, fields):
@@ -101,24 +99,24 @@ class SchoolEvaluation(models.Model):
     @api.multi
     def set_finish(self):
         '''Change state to finished'''
-        self.write({'state': 'finished'})
+        self.state = 'finished'
 
     @api.multi
     def set_cancel(self):
         '''Change state to cancelled'''
-        self.write({'state': 'cancelled'})
+        self.state = 'cancelled'
 
     @api.multi
     def set_draft(self):
         '''Changes state to draft'''
-        self.write({'state': 'draft'})
+        self.state = 'draft'
 
     @api.multi
     def unlink(self):
         for rec in self:
             if rec.state in ['start', 'finished']:
                 raise ValidationError(_('''You can delete record in unconfirm
-                state only.'''))
+                state only!'''))
         return super(SchoolEvaluation, self).unlink()
 
 
@@ -128,12 +126,12 @@ class StudentEvaluationLine(models.Model):
     @api.onchange('point_id')
     def onchange_point(self):
         '''Method to get rating point based on rating'''
+        self.rating = False
         if self.point_id:
             self.rating = self.point_id.rating
 
     eval_id = fields.Many2one('school.evaluation', 'Evaluation id')
-#    teacher_eval_id = fields.Many2one('teacher.evaluation',
-#                                      'Teacher Evaluation id')
+
     stu_eval_id = fields.Many2one('school.evaluation.template', 'Question')
     point_id = fields.Many2one('rating.rating', 'Rating',
                                domain="[('rating_id', '=', stu_eval_id)]")
@@ -166,3 +164,19 @@ class RatingRating(models.Model):
     point = fields.Integer('Rating in points', required=True,
                            help="Points")
     rating = fields.Char('Remarks', required=True)
+
+
+class StudentExtend(models.Model):
+    _inherit = 'student.student'
+
+    @api.multi
+    def set_alumni(self):
+        '''Override method to set active false student evaluation when
+        student is set to alumni'''
+        for rec in self:
+            student_eval = self.env['school.evaluation'].\
+                search([('type', '=', 'student'),
+                        ('student_id', '=', rec.id)])
+            if student_eval:
+                student_eval.write({'active': False})
+        return super(StudentExtend, self).set_alumni()

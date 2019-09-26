@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
 from odoo.tests import common
-from odoo.report import render_report
 from odoo.tools import config
 import os
 import time
@@ -75,7 +73,6 @@ class TestExam(common.TransactionCase):
         self.exam_exam.set_running()
         self.exam_exam.set_finish()
         self.exam_exam.set_cancel()
-        self.exam_exam._validate_date()
         self.exam_exam.generate_result()
         # Create exam result
         self.exam_result = self.exam_result_obj.\
@@ -122,26 +119,24 @@ class TestExam(common.TransactionCase):
                     'write_date': time.strftime('05-30-2012'),
                     })
         # Create additional exam result
-        self.additional_exam_result = self.additional_exam_result_obj.\
+        self.add_exam_result = self.additional_exam_result_obj.\
             create({'a_exam_id': self.additional_exam.id,
                     'student_id': self.student.id,
                     'obtain_marks': 65,
                     'result': 'Pass'
                     })
-        self.additional_exam_result.onchange_student()
-        self.additional_exam_result._validate_obtain_marks()
-        self.additional_exam_result._compute_student_result()
-        data, format = render_report(self.env.cr, self.env.uid,
-                                     self.additional_exam_result.ids,
-                                     'exam.additional_exam_result_report', {},
-                                     {})
+        self.add_exam_result.onchange_student()
+        self.add_exam_result._validate_obtain_marks()
+        self.add_exam_result._compute_student_result()
+        data, data_format = self.env.ref('exam.additional_exam_result_id_qweb'
+                                         ).render(self.add_exam_result.ids)
         if config.get('test_report_directory'):
-            file(os.path.join(config['test_report_directory'],
-                 'Additional Exam Result.' + format),
+            open(os.path.join(config['test_report_directory'],
+                              'exam-Additional Exam Result.' + data_format),
                  'wb+').write(data)
 
     def test_exam(self):
-        self.assertEqual(self.additional_exam_result.student_id.state, 'done')
+        self.assertEqual(self.add_exam_result.student_id.state, 'done')
         self.assertEqual(self.exam_result.student_id.state, 'done')
         self.assertEqual(self.exam_schedule_line.timetable_id.timetable_type,
                          'exam')

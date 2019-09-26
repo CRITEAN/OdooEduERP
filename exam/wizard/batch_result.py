@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
 from odoo import models, api, fields
@@ -18,5 +17,5 @@ class BatchExamResult(models.TransientModel):
     @api.multi
     def print_batch_report(self):
         data = self.read()[0]
-        return self.env['report'].get_action(self, 'exam.exam_result_batch',
-                                             data=data)
+        return self.env.ref('exam.batch_result_qweb').report_action([],
+                                                                    data=data)

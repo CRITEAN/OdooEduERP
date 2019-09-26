@@ -1,16 +1,16 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
 {
     'name': 'School',
-    'version': '10.0.1.0.13',
-    'author': '''Serpent Consulting Services Pvt. Ltd.''',
+    'version': '11.0.1.0.0',
+    'author': 'Serpent Consulting Services Pvt. Ltd.',
     'website': 'http://www.serpentcs.com',
     'category': 'School Management',
     'license': "AGPL-3",
     'complexity': 'easy',
     'Summary': 'A Module For School Management',
-    'depends': ['hr', 'crm', 'report', 'account', 'account_accountant'],
+    'images': ['static/description/EMS.jpg'],
+    'depends': ['hr', 'crm', 'account'],
     'data': ['security/school_security.xml',
              'security/ir.model.access.csv',
              'wizard/terminate_reason_view.xml',

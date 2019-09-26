@@ -1,17 +1,13 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
 import time
-# import re
+import base64
 from datetime import date, datetime
-from odoo import models, fields, api
-from odoo.tools.translate import _
+from odoo import models, fields, api, tools, _
 from odoo.modules import get_module_resource
-# from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from odoo.exceptions import except_orm
 from odoo.exceptions import ValidationError
 from odoo.tools import DEFAULT_SERVER_DATE_FORMAT
-# from dateutil.relativedelta import relativedelta
 from .import school
 
 # from lxml import etree
@@ -30,7 +26,25 @@ class StudentStudent(models.Model):
     _table = "student_student"
     _description = 'Student Information'
 
-    @api.multi
+    @api.model
+    def _search(self, args, offset=0, limit=None, order=None, count=False,
+                access_rights_uid=None):
+        '''Method to get student of parent having group teacher'''
+        teacher_group = self.env.user.has_group('school.group_school_teacher')
+        parent_grp = self.env.user.has_group('school.group_school_parent')
+        login_user = self.env['res.users'].browse(self._uid)
+        name = self._context.get('student_id')
+        if name and teacher_group and parent_grp:
+            parent_login_stud = self.env['school.parent'
+                                         ].search([('partner_id', '=',
+                                                  login_user.partner_id.id)
+                                                   ])
+            childrens = parent_login_stud.student_id
+            args.append(('id', 'in', childrens.ids))
+        return super(StudentStudent, self)._search(
+            args=args, offset=offset, limit=limit, order=order, count=count,
+            access_rights_uid=access_rights_uid)
+
     @api.depends('date_of_birth')
     def _compute_student_age(self):
         '''Method to calculate student age'''
@@ -62,8 +76,8 @@ class StudentStudent(models.Model):
         '''Method to create user when student is created'''
         if vals.get('pid', _('New')) == _('New'):
             vals['pid'] = self.env['ir.sequence'
-                                   ].next_by_code('student.student'
-                                                  ) or _('New')
+                                   ].sudo().next_by_code('student.student'
+                                                         ) or _('New')
         if vals.get('pid', False):
             vals['login'] = vals['pid']
             vals['password'] = vals['pid']
@@ -78,6 +92,12 @@ class StudentStudent(models.Model):
         if vals.get('email'):
             school.emailvalidation(vals.get('email'))
         res = super(StudentStudent, self).create(vals)
+        teacher = self.env['school.teacher']
+        for data in res.parent_id:
+            teacher_rec = teacher.search([('stu_parent_id',
+                                           '=', data.id)])
+            for record in teacher_rec:
+                record.write({'student_id': [(4, res.id, None)]})
         # Assign group to student based on condition
         emp_grp = self.env.ref('base.group_user')
         if res.state == 'draft':
@@ -90,21 +110,26 @@ class StudentStudent(models.Model):
             res.user_id.write({'groups_id': [(6, 0, group_list)]})
         return res
 
-    @api.model
-    def _get_default_image(self, is_company, colorize=False):
-        '''Method to get default Image'''
-        # added in try-except because import statements are in try-except
-        try:
-            img_path = get_module_resource('base', 'static/src/img',
-                                           'avatar.png')
-            with open(img_path, 'rb') as f:
-                image = f.read()
-            image = image_colorize(image)
-            return image_resize_image_big(image.encode('base64'))
-        except:
-            return False
-
     @api.multi
+    def write(self, vals):
+        teacher = self.env['school.teacher']
+        if vals.get('parent_id'):
+            for parent in vals.get('parent_id')[0][2]:
+                teacher_rec = teacher.search([('stu_parent_id',
+                                               '=', parent)])
+                for data in teacher_rec:
+                    data.write({'student_id': [(4, self.id)]})
+        return super(StudentStudent, self).write(vals)
+
+    @api.model
+    def _default_image(self):
+        '''Method to get default Image'''
+        image_path = get_module_resource('hr', 'static/src/img',
+                                         'default_image.png')
+        return tools.image_resize_image_big(base64.b64encode(open(image_path,
+                                                                  'rb').read()
+                                                             ))
+
     @api.depends('state')
     def _compute_teacher_user(self):
         for rec in self:
@@ -142,9 +167,7 @@ class StudentStudent(models.Model):
     contact_phone1 = fields.Char('Phone no.',)
     contact_mobile1 = fields.Char('Mobile no',)
     roll_no = fields.Integer('Roll No.', readonly=True)
-    photo = fields.Binary('Photo', default=lambda self: self._get_default_image
-                          (self._context.get('default_is_company',
-                                             False)))
+    photo = fields.Binary('Photo', default=_default_image)
     year = fields.Many2one('academic.year', 'Academic Year', readonly=True,
                            default=check_current_year)
     cast_id = fields.Many2one('student.cast', 'Religion/Caste')
@@ -238,34 +261,43 @@ class StudentStudent(models.Model):
     teachr_user_grp = fields.Boolean("Teacher Group",
                                      compute="_compute_teacher_user",
                                      )
+    active = fields.Boolean(default=True)
 
     @api.multi
     def set_to_draft(self):
         '''Method to change state to draft'''
-        self.write({'state': 'draft'})
+        self.state = 'draft'
 
     @api.multi
     def set_alumni(self):
         '''Method to change state to alumni'''
-        self.write({'state': 'alumni'})
+        student_user = self.env['res.users']
+        for rec in self:
+            rec.state = 'alumni'
+            rec.standard_id._compute_total_student()
+            user = student_user.search([('id', '=',
+                                         rec.user_id.id)])
+            rec.active = False
+            if user:
+                user.active = False
 
     @api.multi
     def set_done(self):
         '''Method to change state to done'''
-        self.write({'state': 'done'})
+        self.state = 'done'
 
     @api.multi
     def admission_draft(self):
         '''Set the state to draft'''
-        self.write({'state': 'draft'})
+        self.state = 'draft'
 
     @api.multi
     def set_terminate(self):
-        self.write({'state': 'terminate'})
+        self.state = 'terminate'
 
     @api.multi
     def cancel_admission(self):
-        self.write({'state': 'cancel'})
+        self.state = 'cancel'
 
     @api.multi
     def admission_done(self):
@@ -276,9 +308,9 @@ class StudentStudent(models.Model):
         emp_group = self.env.ref('base.group_user')
         for rec in self:
             if not rec.standard_id:
-                raise ValidationError(_('''Please select the standard'''))
+                raise ValidationError(_('''Please select class!'''))
             if rec.standard_id.remaining_seats <= 0:
-                raise ValidationError(_('Seats of standard class %s are full'
+                raise ValidationError(_('Seats of class %s are full'
                                         ) % rec.standard_id.standard_id.name)
             domain = [('school_id', '=', rec.school_id.id)]
             # Checks the standard if not defined raise error
@@ -295,12 +327,12 @@ class StudentStudent(models.Model):
                 rec_std.roll_no = number
                 number += 1
             # Assign registration code to student
-            reg_code = ir_sequence.next_by_code('student.registration')
+            reg_code = ir_sequence.sudo().next_by_code('student.registration')
             registation_code = (str(rec.school_id.state_id.name) + str('/') +
                                 str(rec.school_id.city) + str('/') +
                                 str(rec.school_id.name) + str('/') +
                                 str(reg_code))
-            stu_code = ir_sequence.next_by_code('student.code')
+            stu_code = ir_sequence.sudo().next_by_code('student.code')
             student_code = (str(rec.school_id.code) + str('/') +
                             str(rec.year.code) + str('/') +
                             str(stu_code))

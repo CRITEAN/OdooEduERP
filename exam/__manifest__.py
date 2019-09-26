@@ -1,16 +1,16 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
 {
     'name': 'Exam Management',
-    'version': "10.0.1.0.15",
-    'author': '''Serpent Consulting Services Pvt. Ltd.''',
+    'version': "11.0.1.0.15",
+    'author': 'Serpent Consulting Services Pvt. Ltd.',
     'website': 'http://www.serpentcs.com',
     'category': 'School Management',
     'license': "AGPL-3",
     'summary': 'A Module For Exams Management Taken In School',
     'complexity': 'easy',
-    'depends': ['school', 'timetable', 'mail'],
+    'images': ['static/description/exam_banner.png'],
+    'depends': ['school', 'timetable'],
     'data': ['security/exam_security.xml',
              'security/ir.model.access.csv',
              'views/exam_view.xml',

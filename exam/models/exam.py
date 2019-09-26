@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
 from datetime import date, datetime
@@ -12,6 +11,21 @@ class StudentStudent(models.Model):
 
     exam_results_ids = fields.One2many('exam.result', 'student_id',
                                        'Exam History', readonly=True)
+
+    @api.multi
+    def set_alumni(self):
+        '''Override method to make exam results of student active false
+        when student is alumni'''
+        for rec in self:
+            addexam_result = self.env['additional.exam.result'].\
+                search([('student_id', '=', rec.id)])
+            regular_examresult = self.env['exam.result'].\
+                search([('student_id', '=', rec.id)])
+            if addexam_result:
+                addexam_result.write({'active': False})
+            if regular_examresult:
+                regular_examresult.write({'active': False})
+        return super(StudentStudent, self).set_alumni()
 
     @api.model
     def _search(self, args, offset=0, limit=None, order=None, count=False,
@@ -53,7 +67,6 @@ class ExtendedTimeTable(models.Model):
                                               'TimeTable')
     exam_id = fields.Many2one('exam.exam', 'Exam')
 
-    @api.multi
     @api.constrains('exam_timetable_line_ids')
     def _check_exam(self):
         '''Method to check same exam is not assigned on same day'''
@@ -84,11 +97,11 @@ class ExtendedTimeTableLine(models.Model):
     day_of_week = fields.Char('Week Day')
     class_room_id = fields.Many2one('class.room', 'Classroom')
 
-    @api.multi
     @api.onchange('exm_date')
     def onchange_date_day(self):
         '''Method to get weekday from date'''
         for rec in self:
+            rec.day_of_week = False
             if rec.exm_date:
                 week_day = datetime.strptime(rec.exm_date, "%Y-%m-%d")
                 rec.day_of_week = week_day.strftime("%A").title()
@@ -107,7 +120,6 @@ class ExtendedTimeTableLine(models.Model):
                         Either you have selected wrong day
                                        for the date or you have selected\
                                        invalid date!'''))
-        return True
 
     @api.constrains('teacher_id')
     def check_supervisior_exam(self):
@@ -135,7 +147,7 @@ class ExtendedTimeTableLine(models.Model):
                             self.table_id.timetable_type == 'exam' and
                             self.class_room_id == record.class_room_id and
                             self.start_time == record.start_time):
-                            raise ValidationError(_("The room is occupied!."))
+                            raise ValidationError(_("The room is occupied!"))
 
     @api.constrains('subject_id', 'class_room_id')
     def check_exam_date(self):
@@ -206,8 +218,6 @@ class ExamExam(models.Model):
     start_date = fields.Date("Exam Start Date",
                              help="Exam will start from this date")
     end_date = fields.Date("Exam End date", help="Exam will end at this date")
-#    exam_timetable_ids = fields.One2many('', 'exam_id',
-#                                         'Exam Schedule')
     state = fields.Selection([('draft', 'Draft'),
                               ('running', 'Running'),
                               ('finished', 'Finished'),
@@ -223,7 +233,7 @@ class ExamExam(models.Model):
     @api.multi
     def set_to_draft(self):
         '''Method to set state to draft'''
-        self.write({'state': 'draft'})
+        self.state = 'draft'
 
     @api.multi
     def set_running(self):
@@ -235,25 +245,16 @@ class ExamExam(models.Model):
                 rec.state = 'running'
             else:
                 raise ValidationError(_('You must add one Exam Schedule!'))
-        return True
 
     @api.multi
     def set_finish(self):
         '''Method to set state to finish'''
-        self.write({'state': 'finished'})
+        self.state = 'finished'
 
     @api.multi
     def set_cancel(self):
         '''Method to set state to cancel'''
-        self.write({'state': 'cancelled'})
-
-    @api.multi
-    def _validate_date(self):
-        '''Method to check start date should be less than end date'''
-        for exm in self:
-            if exm.start_date > exm.end_date:
-                return False
-        return True
+        self.state = 'cancelled'
 
     @api.multi
     def generate_result(self):
@@ -307,7 +308,6 @@ class ExamExam(models.Model):
 class ExamScheduleLine(models.Model):
     _name = 'exam.schedule.line'
 
-    @api.multi
     @api.onchange('standard_ids')
     def onchange_standard(self):
         '''Method to get standard according to the standard selected'''
@@ -378,11 +378,10 @@ class AdditionalExam(models.Model):
 
 class ExamResult(models.Model):
     _name = 'exam.result'
-    _inherit = ["mail.thread", "ir.needaction_mixin"]
+    _inherit = ["mail.thread", "resource.mixin"]
     _rec_name = 'roll_no_id'
     _description = 'exam result Information'
 
-    @api.multi
     @api.depends('result_ids', 'result_ids.obtain_marks',
                  'result_ids.marks_reeval')
     def _compute_total(self):
@@ -397,7 +396,6 @@ class ExamResult(models.Model):
                     total += obtain_marks
             rec.total = total
 
-    @api.multi
     @api.depends('total')
     def _compute_per(self):
         '''Method to compute percentage'''
@@ -421,9 +419,7 @@ class ExamResult(models.Model):
                                 per <= grade_id.to_mark:
                             result.grade = grade_id.grade or ''
             result.percentage = per
-        return True
 
-    @api.multi
     @api.depends('percentage')
     def _compute_result(self):
         '''Method to compute result'''
@@ -463,12 +459,14 @@ class ExamResult(models.Model):
         for rec in self:
             if rec.state != 'draft':
                 raise ValidationError(_('''You can delete record in unconfirm
-                state only!.'''))
+                state only!'''))
         return super(ExamResult, self).unlink()
 
     @api.onchange('student_id')
     def onchange_student(self):
         '''Method to get standard and roll no of student selected'''
+        self.standard_id = False
+        self.roll_no_id = False
         if self.student_id:
             self.standard_id = self.student_id.standard_id.id
             self.roll_no_id = self.student_id.roll_no
@@ -504,6 +502,7 @@ class ExamResult(models.Model):
                              track_visibility='onchange',
                              default='draft')
     color = fields.Integer('Color')
+    active = fields.Boolean('Active', default=True)
     grade_system = fields.Many2one('grade.master', "Grade System",
                                    help="Grade System selected")
     message_ids = fields.One2many('mail.message', 'res_id', 'Messages',
@@ -538,12 +537,11 @@ class ExamResult(models.Model):
                     'state': 'confirm'
                     }
             rec.write(vals)
-        return True
 
     @api.multi
     def re_evaluation_confirm(self):
         '''Method to change state to re_evaluation_confirm'''
-        self.write({'state': 're-evaluation_confirm'})
+        self.state = 're-evaluation_confirm'
 
     @api.multi
     def result_re_evaluation(self):
@@ -552,7 +550,6 @@ class ExamResult(models.Model):
             for line in rec.result_ids:
                 line.marks_reeval = line.obtain_marks
             rec.state = 're-evaluation'
-        return True
 
     @api.multi
     def set_done(self):
@@ -575,8 +572,7 @@ class ExamResult(models.Model):
                 history_obj.write(vals)
             elif not history:
                 history_obj.create(vals)
-            rec.write({'state': 'done'})
-        return True
+            rec.state = 'done'
 
 
 class ExamGradeLine(models.Model):
@@ -600,15 +596,14 @@ class ExamSubject(models.Model):
         '''Method to validate marks'''
         if self.obtain_marks > self.maximum_marks:
             raise ValidationError(_('''The obtained marks
-            should not extend maximum marks!.'''))
+            should not extend maximum marks!'''))
         if self.minimum_marks > self.maximum_marks:
             raise ValidationError(_('''The minimum marks
-            should not extend maximum marks!.'''))
+            should not extend maximum marks!'''))
         if(self.marks_reeval > self.maximum_marks):
             raise ValidationError(_('''The revaluation marks
-            should not extend maximum marks!.'''))
+            should not extend maximum marks!'''))
 
-    @api.multi
     @api.depends('exam_id', 'obtain_marks', 'marks_reeval')
     def _compute_grade(self):
         '''Method to compute grade after re-evaluation'''
@@ -648,7 +643,6 @@ class AdditionalExamResult(models.Model):
     _description = 'subject result Information'
     _rec_name = 'roll_no_id'
 
-    @api.multi
     @api.depends('a_exam_id', 'obtain_marks')
     def _compute_student_result(self):
         '''Method to compute result of student'''
@@ -688,8 +682,7 @@ class AdditionalExamResult(models.Model):
     def _validate_obtain_marks(self):
         if self.obtain_marks > self.a_exam_id.subject_id.maximum_marks:
             raise ValidationError(_('''The obtained marks should not extend
-                                    maximum marks!.'''))
-        return True
+                                    maximum marks!'''))
 
     a_exam_id = fields.Many2one('additional.exam', 'Additional Examination',
                                 required=True,
@@ -704,3 +697,4 @@ class AdditionalExamResult(models.Model):
     obtain_marks = fields.Float('Obtain Marks', help="Marks obtain in exam")
     result = fields.Char(compute='_compute_student_result', string='Result',
                          help="Result Obtained", store=True)
+    active = fields.Boolean('Active', default=True)

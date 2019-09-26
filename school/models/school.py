@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
 # import time
@@ -103,7 +102,6 @@ class AcademicYear(models.Model):
                     old_ac.date_start <= self.date_stop <= old_ac.date_stop):
                 raise ValidationError(_('''Error! You cannot define overlapping
                                           academic years.'''))
-        return True
 
     @api.constrains('current')
     def check_current_year(self):
@@ -217,33 +215,30 @@ class SchoolStandard(models.Model):
     _description = 'School Standards'
     _rec_name = "standard_id"
 
-    @api.multi
     @api.depends('standard_id', 'school_id', 'division_id', 'medium_id',
                  'school_id')
     def _compute_student(self):
         '''Compute student of done state'''
         student_obj = self.env['student.student']
         for rec in self:
-            domain = [('standard_id', '=', rec.id),
-                      ('school_id', '=', rec.school_id.id),
-                      ('division_id', '=', rec.division_id.id),
-                      ('medium_id', '=', rec.medium_id.id),
-                      ('state', '=', 'done')]
-            rec.student_ids = student_obj.search(domain)
+            rec.student_ids = student_obj.\
+                search([('standard_id', '=', rec.id),
+                        ('school_id', '=', rec.school_id.id),
+                        ('division_id', '=', rec.division_id.id),
+                        ('medium_id', '=', rec.medium_id.id),
+                        ('state', '=', 'done')])
 
     @api.onchange('standard_id', 'division_id')
     def onchange_combine(self):
         self.name = str(self.standard_id.name
                         ) + '-' + str(self.division_id.name)
 
-    @api.multi
     @api.depends('subject_ids')
     def _compute_subject(self):
         '''Method to compute subjects'''
         for rec in self:
             rec.total_no_subjects = len(rec.subject_ids)
 
-    @api.multi
     @api.depends('student_ids')
     def _compute_total_student(self):
         for rec in self:
@@ -251,7 +246,8 @@ class SchoolStandard(models.Model):
 
     @api.depends("capacity", "total_students")
     def _compute_remain_seats(self):
-        self.remaining_seats = self.capacity - self.total_students
+        for rec in self:
+            rec.remaining_seats = rec.capacity - rec.total_students
 
     school_id = fields.Many2one('school.school', 'School', required=True)
     standard_id = fields.Many2one('standard.standard', 'Standard',
@@ -322,7 +318,6 @@ class SchoolStandard(models.Model):
 class SchoolSchool(models.Model):
     ''' Defining School Information '''
     _name = 'school.school'
-    _inherits = {'res.company': 'company_id'}
     _description = 'School Information'
     _rec_name = "com_name"
 
@@ -334,7 +329,8 @@ class SchoolSchool(models.Model):
 
     company_id = fields.Many2one('res.company', 'Company',
                                  ondelete="cascade",
-                                 required=True)
+                                 required=True,
+                                 delegate=True)
     com_name = fields.Char('School Name', related='company_id.name',
                            store=True)
     code = fields.Char('Code', required=True)
@@ -360,8 +356,7 @@ class SubjectSubject(models.Model):
     teacher_ids = fields.Many2many('school.teacher', 'subject_teacher_rel',
                                    'subject_id', 'teacher_id', 'Teachers')
     standard_ids = fields.Many2many('standard.standard',
-                                    'subject_standards_rel',
-                                    'standard_id', 'subject_id', 'Standards')
+                                    string='Standards')
     standard_id = fields.Many2one('standard.standard', 'Class')
     is_practical = fields.Boolean('Is Practical',
                                   help='Check this if subject is practical.')
@@ -377,7 +372,7 @@ class SubjectSyllabus(models.Model):
     _description = "Syllabus"
     _rec_name = "subject_id"
 
-    standard_id = fields.Many2one('standard.standard', 'Standard')
+    standard_id = fields.Many2one('school.standard', 'Standard')
     subject_id = fields.Many2one('subject.subject', 'Subject')
     syllabus_doc = fields.Binary("Syllabus Doc",
                                  help="Attach syllabus related to Subject")
@@ -476,10 +471,10 @@ class StudentHistory(models.Model):
 
     student_id = fields.Many2one('student.student', 'Student')
     academice_year_id = fields.Many2one('academic.year', 'Academic Year',
-                                        required=True)
-    standard_id = fields.Many2one('school.standard', 'Standard', required=True)
+                                        )
+    standard_id = fields.Many2one('school.standard', 'Standard')
     percentage = fields.Float("Percentage", readonly=True)
-    result = fields.Char('Result', readonly=True, store=True)
+    result = fields.Char('Result', readonly=True)
 
 
 class StudentCertificate(models.Model):
@@ -548,7 +543,6 @@ class StudentFamilyContact(models.Model):
     _name = "student.family.contact"
     _description = "Student Family Contact"
 
-    @api.multi
     @api.depends('relation', 'stu_name')
     def _compute_get_name(self):
         for rec in self:
@@ -723,14 +717,13 @@ class ClassRoom(models.Model):
 
 
 class Report(models.Model):
-    _inherit = "report"
+    _inherit = "ir.actions.report"
 
     @api.multi
-    def render(self, template, values=None):
-        for data in values.get('docs'):
-            if (values.get('doc_model') == 'student.student' and
-                    data.state == 'draft'):
-                    raise ValidationError(_('''You cannot print report for
+    def render_template(self, template, values=None):
+        student_id = self.env['student.student'].\
+            browse(self._context.get('student_id', False))
+        if student_id and student_id.state == 'draft':
+            raise ValidationError(_('''You cannot print report for
                 student in unconfirm state!'''))
-        res = super(Report, self).render(template, values)
-        return res
+        return super(Report, self).render_template(template, values)

@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
 # See LICENSE file for full copyright and licensing details.
 
-from odoo import models, api
+from odoo import models, api, _
 from odoo.exceptions import ValidationError
-from odoo.tools.translate import _
 
 
 class ReportResultInfo(models.AbstractModel):
@@ -23,14 +21,14 @@ class ReportResultInfo(models.AbstractModel):
         list_result = []
         for sub_id in result_id:
             for sub in sub_id.result_ids:
-                std_id = sub_id.standard_id.standard_id.name
-                list_result.append({'standard_id': std_id,
-                                    'name': sub.subject_id.name,
-                                    'code': sub.subject_id.code,
-                                    'maximum_marks': sub.maximum_marks,
-                                    'minimum_marks': sub.minimum_marks,
-                                    'obtain_marks': sub.obtain_marks,
-                                    's_exam_ids': sub_id.s_exam_ids.name})
+                list_result.\
+                    append({'standard_id': sub_id.standard_id.standard_id.name,
+                            'name': sub.subject_id.name,
+                            'code': sub.subject_id.code,
+                            'maximum_marks': sub.maximum_marks,
+                            'minimum_marks': sub.minimum_marks,
+                            'obtain_marks': sub.obtain_marks,
+                            's_exam_ids': sub_id.s_exam_ids.name})
         return list_result
 
     @api.model
@@ -55,21 +53,20 @@ class ReportResultInfo(models.AbstractModel):
         return list_exam
 
     @api.model
-    def render_html(self, docids, data=None):
+    def get_report_values(self, docids, data=None):
         docs = self.env['student.student'].browse(docids)
+        student_model = self.env['ir.actions.report']._get_report_from_name(
+            'exam.result_information_report')
         for rec in docs:
-            res_search = self.env['exam.result'].search([('student_id', '=',
-                                                          rec.id)])
-            if not res_search or rec.state == 'draft':
-                raise ValidationError(_('''You can not print report for student
+            student_search = self.env['exam.result'].search([('student_id',
+                                                              '=', rec.id)])
+            if not student_search or rec.state == 'draft':
+                raise ValidationError(_('''You cannot print report for student
                 in unconfirm state or when data is not found !'''))
-        docargs = {
-            'doc_ids': docids,
-            'doc_model': self.env['student.student'],
-            'data': data,
-            'docs': docs,
-            'get_lines': self.get_lines,
-            'get_exam_data': self.get_exam_data,
-        }
-        return self.env['report'].render('exam.result_information_report',
-                                         docargs)
+            return {'doc_ids': docids,
+                    'doc_model': student_model.model,
+                    'data': data,
+                    'docs': docs,
+                    'get_lines': self.get_lines,
+                    'get_exam_data': self.get_exam_data,
+                    }
