@@ -36,15 +36,31 @@ class SchoolTeacher(models.Model):
                                   'Children')
     phone_numbers = fields.Char("Phone Number")
 
+    @api.onchange('is_parent')
+    def _onchange_isparent(self):
+        if self.is_parent:
+            self.stu_parent_id = False
+            self.student_id = [(6, 0, [])]
+
+    @api.onchange('stu_parent_id')
+    def _onchangestudent_parent(self):
+        if self.stu_parent_id and self.stu_parent_id.student_id:
+            stud_list = []
+            for student in self.stu_parent_id.student_id:
+                stud_list.append(student.id)
+            self.student_id = [(6, 0, stud_list)]
+
     @api.model
     def create(self, vals):
         teacher_id = super(SchoolTeacher, self).create(vals)
+        user_obj = self.env['res.users']
         user_vals = {'name': teacher_id.name,
                      'login': teacher_id.work_email,
                      'email': teacher_id.work_email,
-                     'teacher_create': teacher_id,
-                     'school_id': teacher_id.school_id.id}
-        user_id = self.env['res.users'].create(user_vals)
+                     }
+        ctx_vals = {'teacher_create': True,
+                    'school_id': teacher_id.school_id.company_id.id}
+        user_id = user_obj.with_context(ctx_vals).create(user_vals)
         teacher_id.employee_id.write({'user_id': user_id.id})
         if vals.get('is_parent'):
             self.parent_crt(teacher_id)
